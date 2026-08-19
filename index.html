@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#07100c">
+  <title>Focus//Core</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="site-header">
+      <div class="brand-mark"><span class="brand-dot"></span> FOCUS<span class="brand-slash">//</span>CORE</div>
+      <div class="system-status"><span class="status-light"></span> SYSTEM READY</div>
+    </header>
+
+    <section id="setup-screen" class="screen setup-screen" aria-labelledby="setup-title">
+      <div class="eyebrow">[ SESSION CONFIGURATION ]</div>
+      <h1 id="setup-title">LOCK IN<br><span>YOUR FOCUS.</span></h1>
+      <p class="intro-copy">Set one clear target. Stay with it. Earn the thing waiting on the other side.</p>
+
+      <form id="setup-form" class="setup-form">
+        <label class="field-group">
+          <span class="field-label"><span>01</span> GOAL</span>
+          <input id="goal-input" name="goal" type="text" placeholder="Finish my math homework" maxlength="100" required>
+        </label>
+        <div class="form-row">
+          <label class="field-group">
+            <span class="field-label"><span>02</span> FOCUS TIME</span>
+            <div class="input-with-unit">
+              <input id="duration-input" name="duration" type="number" min="1" max="600" value="25" required>
+              <span>MIN</span>
+            </div>
+          </label>
+          <label class="field-group">
+            <span class="field-label"><span>03</span> REWARD</span>
+            <input id="reward-input" name="reward" type="text" placeholder="30 minutes of gaming" maxlength="100" required>
+          </label>
+        </div>
+        <div class="break-config">
+          <label class="toggle-label" for="break-toggle">
+            <input id="break-toggle" type="checkbox">
+            <span class="toggle-box" aria-hidden="true"></span>
+            <span>ENABLE BREAKS</span>
+          </label>
+          <label class="break-duration-control" for="break-interval-input">
+            BREAK AFTER
+            <span class="input-with-unit compact-input">
+              <input id="break-interval-input" name="breakAfter" type="number" min="1" max="600" value="25" required disabled>
+              <span>MIN</span>
+            </span>
+          </label>
+          <label class="break-duration-control" for="break-duration-input">
+            BREAK LENGTH
+            <span class="input-with-unit compact-input">
+              <input id="break-duration-input" type="number" min="1" max="60" value="5" disabled>
+              <span>MIN</span>
+            </span>
+          </label>
+        </div>
+        <button class="primary-button" type="submit">START FOCUS <span aria-hidden="true">→</span></button>
+      </form>
+    </section>
+
+    <section id="timer-screen" class="screen timer-screen hidden" aria-live="polite">
+      <div class="timer-topline">
+        <div>
+          <div class="eyebrow">[ ACTIVE SESSION ]</div>
+          <p class="session-goal-label">CURRENT GOAL</p>
+          <h2 id="goal-display"></h2>
+        </div>
+        <div class="orientation-control" role="group" aria-label="Progress bar orientation">
+          <button type="button" class="orientation-button active" data-orientation="horizontal">HORIZONTAL</button>
+          <button type="button" class="orientation-button" data-orientation="vertical">VERTICAL</button>
+        </div>
+      </div>
+
+      <div id="status-strip" class="status-strip hidden"></div>
+
+      <div id="progress-layout" class="progress-layout horizontal">
+        <div class="focus-module progress-module">
+          <div class="module-heading"><span>FOCUS PROGRESS</span><span id="focus-percent">0%</span></div>
+          <div class="progress-track" aria-label="Focus progress"><div id="focus-progress" class="progress-fill"></div></div>
+          <div class="time-readout"><span>TIME LEFT</span><strong id="time-left">00:00</strong></div>
+        </div>
+        <div id="break-module" class="break-module progress-module hidden">
+          <div class="module-heading"><span>BREAK PROGRESS</span><span id="break-percent">0%</span></div>
+          <div class="progress-track break-track" aria-label="Break progress"><div id="break-progress" class="progress-fill break-fill"></div></div>
+          <div class="time-readout"><span>BREAK LEFT</span><strong id="break-left">00:00</strong></div>
+        </div>
+      </div>
+
+      <div class="timer-actions">
+        <button id="pause-button" class="secondary-button" type="button">PAUSE <span aria-hidden="true">Ⅱ</span></button>
+      </div>
+
+      <div class="reward-line"><span>REWARD LOCKED</span><strong id="reward-display"></strong></div>
+    </section>
+
+    <section id="complete-screen" class="screen complete-screen hidden" aria-labelledby="complete-title">
+      <div class="completion-icon" aria-hidden="true">✓</div>
+      <div class="eyebrow">[ SESSION TRANSMISSION RECEIVED ]</div>
+      <h1 id="complete-title">GOAL<br><span>COMPLETE</span></h1>
+      <div class="completion-details">
+        <div><span>GOAL</span><strong id="complete-goal"></strong></div>
+        <div><span>REWARD UNLOCKED</span><strong id="complete-reward"></strong></div>
+      </div>
+      <button id="claim-button" class="primary-button" type="button">CLAIM REWARD <span aria-hidden="true">→</span></button>
+      <p id="claimed-message" class="claimed-message hidden">REWARD CLAIMED — NICE WORK.</p>
+    </section>
+
+    <footer class="site-footer"><span>FOCUS//CORE v1.0</span><span>ONE TASK AT A TIME</span></footer>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
