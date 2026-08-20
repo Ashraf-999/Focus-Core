@@ -24,6 +24,7 @@ const completeGoal = document.querySelector('#complete-goal');
 const completeReward = document.querySelector('#complete-reward');
 const claimButton = document.querySelector('#claim-button');
 const claimedMessage = document.querySelector('#claimed-message');
+let audioContext;
 
 const state = {
   goal: '', reward: '', totalFocusMs: 0, breakIntervalMs: 0, breakDurationMs: 0, breaksEnabled: false,
@@ -47,8 +48,11 @@ document.querySelectorAll('.orientation-button').forEach((button) => {
   });
 });
 
-setupForm.addEventListener('submit', (event) => {
+setupForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if ('Notification' in window && Notification.permission === 'default') {
+    await Notification.requestPermission();
+  }
   state.goal = goalInput.value.trim();
   state.reward = rewardInput.value.trim();
   state.totalFocusMs = Number(durationInput.value) * 60 * 1000;
@@ -106,6 +110,7 @@ function tick(now) {
       state.breakElapsedMs = 0;
       breakModule.classList.remove('hidden');
       setStatus('BREAK TIME — RESET YOUR CIRCUITS');
+      notifyUser('Break time', 'Your focus segment is complete. Take a short break.');
     }
   } else if (state.status === 'break') {
     state.breakElapsedMs = Math.min(state.breakDurationMs, now - state.breakStartedAt);
@@ -115,6 +120,7 @@ function tick(now) {
       breakModule.classList.add('hidden');
       state.nextBreakAtMs += state.breakIntervalMs;
       setStatus('BREAK COMPLETE — BACK TO WORK');
+      notifyUser('Break complete', 'Your next focus segment is ready.');
     }
   }
 
@@ -170,6 +176,7 @@ function finishSession() {
   state.status = 'complete';
   state.focusElapsedMs = state.totalFocusMs;
   cancelAnimationFrame(state.animationFrame);
+  notifyUser('Focus session complete', `Goal complete: ${state.goal}`);
   completeGoal.textContent = state.goal;
   completeReward.textContent = state.reward;
   timerScreen.classList.add('hidden');
@@ -179,6 +186,32 @@ function finishSession() {
 function setStatus(message) {
   statusStrip.textContent = message;
   statusStrip.classList.remove('hidden');
+}
+
+function notifyUser(title, message) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { body: message });
+  }
+
+  playNotificationSound();
+}
+
+function playNotificationSound() {
+  audioContext ??= new AudioContext();
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  const now = audioContext.currentTime;
+
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(660, now);
+  oscillator.frequency.setValueAtTime(880, now + 0.12);
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start(now);
+  oscillator.stop(now + 0.5);
 }
 
 function formatTime(milliseconds) {
