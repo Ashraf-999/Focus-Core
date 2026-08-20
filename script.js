@@ -44,7 +44,7 @@ document.querySelectorAll('.orientation-button').forEach((button) => {
     progressLayout.classList.toggle('vertical', state.orientation === 'vertical');
     progressLayout.classList.toggle('horizontal', state.orientation === 'horizontal');
     document.querySelectorAll('.orientation-button').forEach((item) => item.classList.toggle('active', item === button));
-    updateDisplay(performance.now());
+    updateDisplay(Date.now());
   });
 });
 
@@ -64,7 +64,7 @@ setupForm.addEventListener('submit', async (event) => {
   state.milestones = new Set();
   state.status = 'focus';
   state.paused = false;
-  state.focusSegmentStartedAt = performance.now();
+  state.focusSegmentStartedAt = Date.now();
   goalDisplay.textContent = state.goal;
   rewardDisplay.textContent = state.reward;
   setupScreen.classList.add('hidden');
@@ -72,7 +72,7 @@ setupForm.addEventListener('submit', async (event) => {
   timerScreen.classList.remove('hidden');
   pauseButton.innerHTML = 'PAUSE <span aria-hidden="true">Ⅱ</span>';
   statusStrip.classList.add('hidden');
-  updateDisplay(performance.now());
+  updateDisplay(Date.now());
   cancelAnimationFrame(state.animationFrame);
   state.animationFrame = requestAnimationFrame(tick);
 });
@@ -81,16 +81,16 @@ pauseButton.addEventListener('click', () => {
   if (state.status !== 'focus') return;
   if (state.paused) {
     state.paused = false;
-    state.focusSegmentStartedAt = performance.now();
+    state.focusSegmentStartedAt = Date.now();
     pauseButton.innerHTML = 'PAUSE <span aria-hidden="true">Ⅱ</span>';
     setStatus('FOCUS RESUMED');
     state.animationFrame = requestAnimationFrame(tick);
   } else {
-    state.focusElapsedMs += performance.now() - state.focusSegmentStartedAt;
+    state.focusElapsedMs += Date.now() - state.focusSegmentStartedAt;
     state.paused = true;
     pauseButton.innerHTML = 'RESUME <span aria-hidden="true">▶</span>';
     setStatus('TIMER PAUSED — YOUR PROGRESS IS SAVED');
-    updateDisplay(performance.now());
+    updateDisplay(Date.now());
   }
 });
 
@@ -100,7 +100,8 @@ claimButton.addEventListener('click', () => {
   claimedMessage.classList.remove('hidden');
 });
 
-function tick(now) {
+function tick() {
+  const now = Date.now();
   if (state.status === 'focus' && !state.paused) {
     const currentFocus = state.focusElapsedMs + (now - state.focusSegmentStartedAt);
     if (state.breaksEnabled && currentFocus >= state.nextBreakAtMs && state.nextBreakAtMs < state.totalFocusMs) {
@@ -190,28 +191,33 @@ function setStatus(message) {
 
 function notifyUser(title, message) {
   if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, { body: message });
+    new Notification(title, { body: message, silent: false });
   }
 
   playNotificationSound();
 }
 
 function playNotificationSound() {
-  audioContext ??= new AudioContext();
-  const oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
-  const now = audioContext.currentTime;
+  try {
+    audioContext ??= new AudioContext();
+    if (audioContext.state === 'suspended') audioContext.resume();
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const now = audioContext.currentTime;
 
-  oscillator.type = 'sine';
-  oscillator.frequency.setValueAtTime(660, now);
-  oscillator.frequency.setValueAtTime(880, now + 0.12);
-  gain.gain.setValueAtTime(0.001, now);
-  gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-  oscillator.connect(gain);
-  gain.connect(audioContext.destination);
-  oscillator.start(now);
-  oscillator.stop(now + 0.5);
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(660, now);
+    oscillator.frequency.setValueAtTime(880, now + 0.12);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.5);
+  } catch {
+    // Background browser audio can be blocked independently of notifications.
+  }
 }
 
 function formatTime(milliseconds) {
