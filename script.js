@@ -25,6 +25,13 @@ const completeReward = document.querySelector('#complete-reward');
 const claimButton = document.querySelector('#claim-button');
 const claimedMessage = document.querySelector('#claimed-message');
 let audioContext;
+let notificationRegistration;
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./service-worker.js')
+    .then((registration) => { notificationRegistration = registration; })
+    .catch(() => { notificationRegistration = null; });
+}
 
 const state = {
   goal: '', reward: '', totalFocusMs: 0, breakIntervalMs: 0, breakDurationMs: 0, breaksEnabled: false,
@@ -168,7 +175,14 @@ function triggerMilestone(percentage) {
   [25, 50, 75, 100].forEach((milestone) => {
     if (percentage >= milestone && !state.milestones.has(milestone)) {
       state.milestones.add(milestone);
-      setStatus({ 25: '25% COMPLETE — KEEP GOING!', 50: "50% COMPLETE — YOU'RE HALFWAY THERE!", 75: '75% COMPLETE — FINAL STRETCH!', 100: '100% COMPLETE — YOU DID IT!' }[milestone]);
+      const message = {
+        25: '25% complete — Keep going!',
+        50: "50% complete — You're halfway there!",
+        75: '75% complete — Final stretch!',
+        100: '100% complete — You did it!'
+      }[milestone];
+      setStatus(message.toUpperCase());
+      notifyUser('Focus Timer', message, `focus-core-milestone-${milestone}`);
     }
   });
 }
@@ -177,7 +191,6 @@ function finishSession() {
   state.status = 'complete';
   state.focusElapsedMs = state.totalFocusMs;
   cancelAnimationFrame(state.animationFrame);
-  notifyUser('Focus session complete', `Goal complete: ${state.goal}`);
   completeGoal.textContent = state.goal;
   completeReward.textContent = state.reward;
   timerScreen.classList.add('hidden');
@@ -189,8 +202,17 @@ function setStatus(message) {
   statusStrip.classList.remove('hidden');
 }
 
-function notifyUser(title, message) {
-  if ('Notification' in window && Notification.permission === 'granted') {
+async function notifyUser(title, message, tag = `focus-core-${Date.now()}`) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  try {
+    const registration = notificationRegistration || await navigator.serviceWorker.ready;
+    if (registration.active) {
+      registration.active.postMessage({ type: 'show-notification', title, body: message, tag });
+    } else {
+      new Notification(title, { body: message, silent: false });
+    }
+  } catch {
     new Notification(title, { body: message, silent: false });
   }
 
