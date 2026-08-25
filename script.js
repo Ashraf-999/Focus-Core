@@ -25,8 +25,144 @@ const completeReward = document.querySelector('#complete-reward');
 const claimButton = document.querySelector('#claim-button');
 const claimedMessage = document.querySelector('#claimed-message');
 const SESSION_STORAGE_KEY = 'focus-core-session';
+const notificationSound = new Audio(createNotificationToneUrl({ frequency: 660, durationSeconds: 0.2, amplitude: 0.35 }));
+notificationSound.preload = 'auto';
+notificationSound.volume = 0.65;
+const rewardSound = new Audio('./koiroylers-correct-356013.mp3');
+rewardSound.preload = 'auto';
+rewardSound.volume = 0.8;
 let notificationRegistration;
 let serviceWorkerReady;
+let wakeLock = null;
+let wakeLockRequest = null;
+
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator) || wakeLock && !wakeLock.released || wakeLockRequest) return;
+
+  wakeLockRequest = navigator.wakeLock.request('screen')
+    .then((lock) => {
+      wakeLock = lock;
+    })
+    .catch((error) => {
+      console.error('Wake Lock request failed:', error);
+    })
+    .finally(() => {
+      wakeLockRequest = null;
+    });
+  await wakeLockRequest;
+}
+
+async function releaseWakeLock() {
+  if (wakeLockRequest) await wakeLockRequest;
+  if (!wakeLock) return;
+
+  try {
+    await wakeLock.release();
+  } catch (error) {
+    console.error('Wake Lock release failed:', error);
+  } finally {
+    wakeLock = null;
+  }
+}
+
+function createNotificationToneUrl({ frequency = 660, durationSeconds = 0.2, amplitude = 0.35 } = {}) {
+  const sampleRate = 22050;
+  const totalSamples = Math.floor(sampleRate * durationSeconds);
+  const samples = new Int16Array(totalSamples);
+
+  for (let index = 0; index < totalSamples; index += 1) {
+    const time = index / sampleRate;
+    const attack = Math.min(1, time / 0.02);
+    const release = Math.max(0, 1 - (time / durationSeconds));
+    const envelope = attack * release;
+    const value = Math.sin(2 * Math.PI * frequency * time) * amplitude * envelope;
+    samples[index] = Math.max(-1, Math.min(1, value)) * 32767;
+  }
+
+  const bytesPerSample = 2;
+  const blockAlign = 1 * bytesPerSample;
+  const dataLength = samples.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(buffer);
+
+  function writeString(offset, text) {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index));
+    }
+  }
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, dataLength, true);
+
+  for (let index = 0; index < samples.length; index += 1) {
+    view.setInt16(44 + index * bytesPerSample, samples[index], true);
+  }
+
+  return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+}
+
+function createRewardConfettiUrl() {
+  const sampleRate = 22050;
+  const durationSeconds = 0.48;
+  const totalSamples = Math.floor(sampleRate * durationSeconds);
+  const samples = new Float32Array(totalSamples);
+
+  for (let index = 0; index < totalSamples; index += 1) {
+    const time = index / sampleRate;
+    const popEnvelope = Math.exp(-time * 28);
+    const sparkleEnvelope = Math.max(0, 1 - (time / 0.1));
+    const tailEnvelope = Math.exp(-time * 10);
+
+    const pop = Math.sin(2 * Math.PI * 1320 * time) * 0.7 * popEnvelope;
+    const sparkle = Math.sin(2 * Math.PI * (700 + time * 1800) * time) * 0.24 * sparkleEnvelope;
+    const secondaryPop = Math.sin(2 * Math.PI * 980 * time) * 0.2 * Math.exp(-time * 16) * (1 - Math.min(1, time / 0.06));
+    const tail = Math.sin(2 * Math.PI * 260 * time) * 0.12 * tailEnvelope;
+    const value = pop + sparkle + secondaryPop + tail;
+    samples[index] = Math.max(-1, Math.min(1, value));
+  }
+
+  const bytesPerSample = 2;
+  const dataLength = samples.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(buffer);
+
+  function writeString(offset, text) {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index));
+    }
+  }
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, dataLength, true);
+
+  for (let index = 0; index < samples.length; index += 1) {
+    view.setInt16(44 + index * bytesPerSample, Math.max(-1, Math.min(1, samples[index])) * 32767, true);
+  }
+
+  return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+}
 
 if (location.protocol === 'file:') {
   console.error('Use http://localhost:8000, not file://, for notifications.');
@@ -92,6 +228,7 @@ function restoreSession() {
     reconcileSession(Date.now());
     updateDisplay(Date.now());
     if (!state.paused) state.timerHandle = setTimeout(tick, 250);
+    if (state.status === 'focus' && !state.paused) void requestWakeLock();
     return true;
   } catch (error) {
     console.error('Saved session restore failed:', error);
@@ -115,40 +252,57 @@ document.querySelectorAll('.orientation-button').forEach((button) => {
   });
 });
 
-setupForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  await requestNotificationPermission();
-  state.goal = goalInput.value.trim();
-  state.reward = rewardInput.value.trim();
-  state.totalFocusMs = Number(durationInput.value) * 60 * 1000;
-  state.breaksEnabled = breakToggle.checked;
-  state.breakIntervalMs = Number(breakIntervalInput.value) * 60 * 1000;
-  state.breakDurationMs = Number(breakDurationInput.value) * 60 * 1000;
-  state.focusElapsedMs = 0;
-  state.nextBreakAtMs = state.breakIntervalMs;
-  state.milestones = new Set();
-  state.status = 'focus';
-  state.paused = false;
-  state.focusSegmentStartedAt = Date.now();
-  persistSession();
-  goalDisplay.textContent = state.goal;
-  rewardDisplay.textContent = state.reward;
-  setupScreen.classList.add('hidden');
-  completeScreen.classList.add('hidden');
-  timerScreen.classList.remove('hidden');
-  pauseButton.innerHTML = 'PAUSE <span aria-hidden="true">Ⅱ</span>';
-  statusStrip.classList.add('hidden');
-  updateDisplay(Date.now());
-  clearTimeout(state.timerHandle);
-  state.timerHandle = setTimeout(tick, 250);
+setupForm.addEventListener('submit', (event) => {
+  try {
+    event.preventDefault();
+
+    state.goal = goalInput.value.trim();
+    state.reward = rewardInput.value.trim();
+    state.totalFocusMs = Number(durationInput.value) * 60 * 1000;
+    state.breaksEnabled = breakToggle.checked;
+    state.breakIntervalMs = Number(breakIntervalInput.value) * 60 * 1000;
+    state.breakDurationMs = Number(breakDurationInput.value) * 60 * 1000;
+    state.focusElapsedMs = 0;
+    state.nextBreakAtMs = state.breakIntervalMs;
+    state.milestones = new Set();
+    state.status = 'focus';
+    state.paused = false;
+    state.focusSegmentStartedAt = Date.now();
+    persistSession();
+    goalDisplay.textContent = state.goal;
+    rewardDisplay.textContent = state.reward;
+    setupScreen.classList.add('hidden');
+    completeScreen.classList.add('hidden');
+    timerScreen.classList.remove('hidden');
+    pauseButton.innerHTML = 'PAUSE <span aria-hidden="true">Ⅱ</span>';
+    statusStrip.classList.add('hidden');
+    updateDisplay(Date.now());
+    clearTimeout(state.timerHandle);
+    state.timerHandle = setTimeout(tick, 250);
+
+    void requestWakeLock();
+    void requestNotificationPermission();
+    void unlockNotificationSound();
+  } catch (error) {
+    console.error('START FOCUS FAILED:', error);
+    console.error(error.stack);
+  }
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible' || !state.totalFocusMs || state.paused) return;
+  if (document.visibilityState !== 'visible') {
+    void releaseWakeLock();
+    return;
+  }
+  if (!state.totalFocusMs || state.paused) return;
   const now = Date.now();
   reconcileSession(now);
   updateDisplay(now);
-  if (state.status === 'focus' && getFocusElapsed(now) >= state.totalFocusMs) finishSession();
+  if (state.status === 'focus' && getFocusElapsed(now) >= state.totalFocusMs) {
+    finishSession();
+    return;
+  }
+  if (state.status === 'focus') void requestWakeLock();
 });
 
 pauseButton.addEventListener('click', () => {
@@ -160,6 +314,7 @@ pauseButton.addEventListener('click', () => {
     setStatus('FOCUS RESUMED');
     persistSession();
     state.timerHandle = setTimeout(tick, 250);
+    void requestWakeLock();
   } else {
     state.focusElapsedMs += Date.now() - state.focusSegmentStartedAt;
     state.paused = true;
@@ -167,13 +322,24 @@ pauseButton.addEventListener('click', () => {
     setStatus('TIMER PAUSED — YOUR PROGRESS IS SAVED');
     persistSession();
     updateDisplay(Date.now());
+    void releaseWakeLock();
   }
 });
 
-claimButton.addEventListener('click', () => {
+claimButton.addEventListener('click', async () => {
+  if (claimButton.disabled) return;
+
   claimButton.disabled = true;
   claimButton.textContent = 'REWARD CLAIMED';
   claimedMessage.classList.remove('hidden');
+
+  try {
+    rewardSound.pause();
+    rewardSound.currentTime = 0;
+    await rewardSound.play();
+  } catch (error) {
+    console.error('Reward sound could not play:', error);
+  }
 });
 
 function getFocusElapsed(now) {
@@ -199,6 +365,7 @@ function reconcileSession(now) {
       state.breakElapsedMs = Math.max(0, now - breakStartedAt);
       breakModule.classList.remove('hidden');
       setStatus('BREAK TIME — RESET YOUR CIRCUITS');
+      void releaseWakeLock();
       notifyUser('Break time', 'Your focus segment is complete. Take a short break.');
       persistSession();
     }
@@ -212,6 +379,7 @@ function reconcileSession(now) {
       state.nextBreakAtMs += state.breakIntervalMs;
       breakModule.classList.add('hidden');
       setStatus('BREAK COMPLETE — BACK TO WORK');
+      void requestWakeLock();
       notifyUser('Break complete', 'Your next focus segment is ready.');
       persistSession();
     }
@@ -257,6 +425,42 @@ function updateDisplay(now) {
   }
 }
 
+async function unlockNotificationSound() {
+  if (!notificationSound) return false;
+
+  try {
+    notificationSound.muted = true;
+    notificationSound.volume = 0.001;
+    notificationSound.currentTime = 0;
+    await notificationSound.play().catch(() => {});
+    notificationSound.pause();
+    notificationSound.currentTime = 0;
+    notificationSound.muted = false;
+    notificationSound.volume = 0.65;
+    return true;
+  } catch (error) {
+    console.warn('Could not unlock notification audio:', error);
+    return false;
+  }
+}
+
+function playMilestoneSound() {
+  if (!notificationSound || document.visibilityState !== 'visible') return false;
+
+  try {
+    notificationSound.pause();
+    notificationSound.currentTime = 0;
+    notificationSound.volume = 0.65;
+    notificationSound.play().catch((error) => {
+      console.warn('Milestone sound playback failed:', error);
+    });
+    return true;
+  } catch (error) {
+    console.warn('Milestone sound setup failed:', error);
+    return false;
+  }
+}
+
 function triggerMilestone(percentage) {
   [25, 50, 75, 100].forEach((milestone) => {
     if (percentage >= milestone && !state.milestones.has(milestone)) {
@@ -269,6 +473,7 @@ function triggerMilestone(percentage) {
       }[milestone];
       setStatus(message.toUpperCase());
       notifyUser('Focus Timer', message, `focus-core-milestone-${milestone}`);
+      playMilestoneSound();
       persistSession();
     }
   });
@@ -278,6 +483,7 @@ function finishSession() {
   state.status = 'complete';
   state.focusElapsedMs = state.totalFocusMs;
   clearTimeout(state.timerHandle);
+  void releaseWakeLock();
   completeGoal.textContent = state.goal;
   completeReward.textContent = state.reward;
   persistSession();
