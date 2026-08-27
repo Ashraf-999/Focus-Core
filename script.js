@@ -31,7 +31,7 @@ const claimButton = document.querySelector('#claim-button');
 const claimedMessage = document.querySelector('#claimed-message');
 const SESSION_STORAGE_KEY = 'focus-core-session';
 const AUDIO_SETTINGS_KEY = 'focus-core-audio-settings';
-const notificationSound = new Audio(createNotificationToneUrl({ frequency: 660, durationSeconds: 0.2, amplitude: 0.35 }));
+const notificationSound = new Audio('./Notification%20Sound.wav');
 notificationSound.preload = 'auto';
 notificationSound.volume = 0.65;
 const rewardSound = new Audio('./koiroylers-correct-356013.mp3');
@@ -51,6 +51,10 @@ async function requestWakeLock() {
   wakeLockRequest = navigator.wakeLock.request('screen')
     .then((lock) => {
       wakeLock = lock;
+      lock.addEventListener('release', () => {
+        wakeLock = null;
+        if (isActiveSession() && document.visibilityState === 'visible') void requestWakeLock();
+      });
     })
     .catch((error) => {
       console.error('Wake Lock request failed:', error);
@@ -59,6 +63,10 @@ async function requestWakeLock() {
       wakeLockRequest = null;
     });
   await wakeLockRequest;
+}
+
+function isActiveSession() {
+  return state.totalFocusMs > 0 && ['focus', 'break'].includes(state.status);
 }
 
 async function releaseWakeLock() {
@@ -376,7 +384,7 @@ function restoreSession() {
     updateDisplay(Date.now());
     if (!state.paused) state.timerHandle = setTimeout(tick, 250);
     if (state.status === 'focus' && !state.paused && prepareUserAudio()) playUserAudio();
-    if (state.status === 'focus' && !state.paused) void requestWakeLock();
+    if (isActiveSession()) void requestWakeLock();
     return true;
   } catch (error) {
     console.error('Saved session restore failed:', error);
@@ -487,7 +495,7 @@ document.addEventListener('visibilitychange', () => {
     void releaseWakeLock();
     return;
   }
-  if (!state.totalFocusMs || state.paused) return;
+  if (!state.totalFocusMs) return;
   const now = Date.now();
   reconcileSession(now);
   updateDisplay(now);
@@ -495,7 +503,7 @@ document.addEventListener('visibilitychange', () => {
     finishSession();
     return;
   }
-  if (state.status === 'focus') void requestWakeLock();
+  if (isActiveSession()) void requestWakeLock();
 });
 
 pauseButton.addEventListener('click', () => {
@@ -517,7 +525,6 @@ pauseButton.addEventListener('click', () => {
     persistSession();
     updateDisplay(Date.now());
     pauseUserAudio();
-    void releaseWakeLock();
   }
 });
 
@@ -625,7 +632,8 @@ function reconcileSession(now) {
       breakModule.classList.remove('hidden');
       setStatus('BREAK TIME — RESET YOUR CIRCUITS');
       pauseUserAudio();
-      void releaseWakeLock();
+      playNotificationSound();
+      void requestWakeLock();
       notifyUser('Break time', 'Your focus segment is complete. Take a short break.');
       persistSession();
     }
@@ -640,6 +648,7 @@ function reconcileSession(now) {
       breakModule.classList.add('hidden');
       setStatus('BREAK COMPLETE — BACK TO WORK');
       playUserAudio();
+      playNotificationSound();
       void requestWakeLock();
       notifyUser('Break complete', 'Your next focus segment is ready.');
       persistSession();
@@ -705,7 +714,7 @@ async function unlockNotificationSound() {
   }
 }
 
-function playMilestoneSound() {
+function playNotificationSound() {
   if (!notificationSound || document.visibilityState !== 'visible') return false;
 
   try {
@@ -734,7 +743,7 @@ function triggerMilestone(percentage) {
       }[milestone];
       setStatus(message.toUpperCase());
       notifyUser('Focus Timer', message, `focus-core-milestone-${milestone}`);
-      playMilestoneSound();
+      playNotificationSound();
       persistSession();
     }
   });
