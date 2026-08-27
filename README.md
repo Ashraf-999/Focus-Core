@@ -1,12 +1,14 @@
 # Focus-Core
-It is a productivity timer app with a option to set goals and rewards, and the progress bar system to increase focus and satisfaction.
+It is a productivity timer app with a option to set goals, audio and rewards, and the progress bar system to increase focus and satisfaction.
 
-## Run locally
 
-Service workers require a secure context. Start the site with a local server instead of opening `index.html` directly:
+<img width="1476" height="815" alt="Screenshot 2026-08-19 142924" src="https://github.com/user-attachments/assets/e6a424a4-d9d8-455a-bb1b-5bcf525b547c" />
 
-```powershell
-python -m http.server 8000
-```
 
-Then open `http://localhost:8000` and allow notifications when starting a session. For production, serve the site over HTTPS.
+You can try out my website from here <a href="https://ashraf-999.github.io/Focus-Core/" target="blank">Try it</a>
+
+## Features:
+1. Setting timer.
+2. Setting goals and rewards.
+3. setting break time and audio system.
+4. A progress bar.
