@@ -8,6 +8,10 @@ const rewardInput = document.querySelector('#reward-input');
 const breakToggle = document.querySelector('#break-toggle');
 const breakIntervalInput = document.querySelector('#break-interval-input');
 const breakDurationInput = document.querySelector('#break-duration-input');
+const audioUrlInput = document.querySelector('#audio-url-input');
+const audioToggle = document.querySelector('#audio-toggle');
+const testAudioButton = document.querySelector('#test-audio-button');
+const audioMessage = document.querySelector('#audio-message');
 const goalDisplay = document.querySelector('#goal-display');
 const rewardDisplay = document.querySelector('#reward-display');
 const focusProgress = document.querySelector('#focus-progress');
@@ -20,11 +24,13 @@ const breakLeft = document.querySelector('#break-left');
 const statusStrip = document.querySelector('#status-strip');
 const progressLayout = document.querySelector('#progress-layout');
 const pauseButton = document.querySelector('#pause-button');
+const stopButton = document.querySelector('#stop-button');
 const completeGoal = document.querySelector('#complete-goal');
 const completeReward = document.querySelector('#complete-reward');
 const claimButton = document.querySelector('#claim-button');
 const claimedMessage = document.querySelector('#claimed-message');
 const SESSION_STORAGE_KEY = 'focus-core-session';
+const AUDIO_SETTINGS_KEY = 'focus-core-audio-settings';
 const notificationSound = new Audio(createNotificationToneUrl({ frequency: 660, durationSeconds: 0.2, amplitude: 0.35 }));
 notificationSound.preload = 'auto';
 notificationSound.volume = 0.65;
@@ -35,6 +41,9 @@ let notificationRegistration;
 let serviceWorkerReady;
 let wakeLock = null;
 let wakeLockRequest = null;
+let userAudio = null;
+let youtubePlayer = null;
+let testingAudio = false;
 
 async function requestWakeLock() {
   if (!('wakeLock' in navigator) || wakeLock && !wakeLock.released || wakeLockRequest) return;
@@ -183,10 +192,148 @@ if (location.protocol === 'file:') {
 
 const state = {
   goal: '', reward: '', totalFocusMs: 0, breakIntervalMs: 0, breakDurationMs: 0, breaksEnabled: false,
+  audioUrl: '', audioEnabled: false,
   focusElapsedMs: 0, focusSegmentStartedAt: 0, breakStartedAt: 0, breakElapsedMs: 0,
   nextBreakAtMs: 0, status: 'focus', orientation: 'horizontal', paused: false,
   milestones: new Set(), timerHandle: 0
 };
+
+function saveAudioSettings() {
+  localStorage.setItem(AUDIO_SETTINGS_KEY, JSON.stringify({
+    audioUrl: audioUrlInput.value.trim(),
+    audioEnabled: audioToggle.checked
+  }));
+}
+
+function restoreAudioSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AUDIO_SETTINGS_KEY));
+    if (!saved) return;
+    audioUrlInput.value = typeof saved.audioUrl === 'string' ? saved.audioUrl : '';
+    audioToggle.checked = saved.audioEnabled === true;
+  } catch (error) {
+    console.error('Saved audio settings restore failed:', error);
+    localStorage.removeItem(AUDIO_SETTINGS_KEY);
+  }
+}
+
+function getAudioUrl() {
+  return audioUrlInput.value.trim();
+}
+
+function getAudioSelection() {
+  const value = getAudioUrl();
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported protocol');
+
+    const hostname = url.hostname.toLowerCase();
+    let videoId = '';
+    if (hostname === 'youtu.be') {
+      videoId = url.pathname.slice(1).split('/')[0];
+    } else if (hostname === 'youtube.com' || hostname.endsWith('.youtube.com')) {
+      if (url.pathname === '/watch') videoId = url.searchParams.get('v') || '';
+      if (url.pathname.startsWith('/shorts/')) videoId = url.pathname.split('/')[2] || '';
+    }
+    if (videoId) {
+      const validVideoId = videoId.match(/^[A-Za-z0-9_-]{11}/)?.[0];
+      if (validVideoId) return { type: 'youtube', url: url.href, videoId: validVideoId };
+      return { type: 'unsupported', url: url.href };
+    }
+
+    if (/\.(?:mp3|wav|ogg|oga|m4a|aac|flac|webm)(?:$|[?#])/i.test(url.pathname + url.search)) {
+      return { type: 'direct', url: url.href };
+    }
+    return { type: 'unsupported', url: url.href };
+  } catch {
+    return { type: 'invalid', url: value };
+  }
+}
+
+function showAudioMessage(message, isError = false) {
+  audioMessage.textContent = message;
+  audioMessage.classList.toggle('error', isError);
+}
+
+function stopUserAudio() {
+  if (userAudio) {
+    userAudio.pause();
+    userAudio.currentTime = 0;
+    userAudio = null;
+  }
+  if (youtubePlayer) {
+    sendYouTubeCommand('pauseVideo');
+    youtubePlayer.remove();
+    youtubePlayer = null;
+  }
+  testingAudio = false;
+  testAudioButton.innerHTML = 'TEST AUDIO <span aria-hidden="true">▶</span>';
+}
+
+function createYouTubePlayer(videoId, autoplay = false) {
+  const player = document.createElement('iframe');
+  const origin = location.origin === 'null' ? '' : `&origin=${encodeURIComponent(location.origin)}`;
+  player.className = 'audio-player';
+  player.title = 'Audio Link YouTube player';
+  player.allow = 'autoplay; encrypted-media';
+  player.src = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&playsinline=1&controls=0&rel=0&autoplay=${autoplay ? 1 : 0}${origin}`;
+  player.addEventListener('load', () => {
+    if (autoplay) sendYouTubeCommand('playVideo');
+  }, { once: true });
+  document.body.appendChild(player);
+  youtubePlayer = player;
+}
+
+function sendYouTubeCommand(command) {
+  if (!youtubePlayer?.contentWindow) return;
+  youtubePlayer.contentWindow.postMessage(JSON.stringify({ event: 'command', func: command, args: [] }), '*');
+}
+
+function prepareUserAudio() {
+  stopUserAudio();
+  if (!audioToggle.checked) return false;
+  const selection = getAudioSelection();
+  if (selection.type === 'invalid') {
+    showAudioMessage('Enter a valid http(s) audio URL to use Audio Link.', true);
+    if (!timerScreen.classList.contains('hidden')) setStatus('AUDIO LINK IS INVALID — TIMER CONTINUES WITHOUT AUDIO');
+    return false;
+  }
+  if (selection.type === 'unsupported') {
+    showAudioMessage('Unsupported link. Use a YouTube video or a direct audio file URL.', true);
+    if (!timerScreen.classList.contains('hidden')) setStatus('AUDIO LINK IS UNSUPPORTED — TIMER CONTINUES WITHOUT AUDIO');
+    return false;
+  }
+  if (selection.type === 'youtube') {
+    createYouTubePlayer(selection.videoId, true);
+    return true;
+  }
+  userAudio = new Audio(selection.url);
+  userAudio.preload = 'auto';
+  userAudio.loop = true;
+  userAudio.addEventListener('error', () => {
+    stopUserAudio();
+    showAudioMessage('This direct audio link could not be loaded. Check the URL or file format.', true);
+    if (!timerScreen.classList.contains('hidden')) setStatus('AUDIO LINK COULD NOT LOAD — TIMER CONTINUES WITHOUT AUDIO');
+  });
+  return true;
+}
+
+function playUserAudio() {
+  if (state.status !== 'focus' || state.paused) return;
+  if (youtubePlayer) {
+    sendYouTubeCommand('playVideo');
+    return;
+  }
+  if (userAudio) userAudio.play().catch(() => {
+    showAudioMessage('Direct audio playback was blocked by the browser. Use Test Audio or check site permissions.', true);
+    if (!timerScreen.classList.contains('hidden')) setStatus('DIRECT AUDIO PLAYBACK WAS BLOCKED — TIMER CONTINUES');
+  });
+}
+
+function pauseUserAudio() {
+  if (userAudio) userAudio.pause();
+  if (youtubePlayer) sendYouTubeCommand('pauseVideo');
+}
 
 function persistSession() {
   if (state.status === 'complete') {
@@ -228,6 +375,7 @@ function restoreSession() {
     reconcileSession(Date.now());
     updateDisplay(Date.now());
     if (!state.paused) state.timerHandle = setTimeout(tick, 250);
+    if (state.status === 'focus' && !state.paused && prepareUserAudio()) playUserAudio();
     if (state.status === 'focus' && !state.paused) void requestWakeLock();
     return true;
   } catch (error) {
@@ -240,6 +388,47 @@ function restoreSession() {
 breakToggle.addEventListener('change', () => {
   breakIntervalInput.disabled = !breakToggle.checked;
   breakDurationInput.disabled = !breakToggle.checked;
+});
+
+audioUrlInput.addEventListener('input', saveAudioSettings);
+audioToggle.addEventListener('change', () => {
+  saveAudioSettings();
+  if (!audioToggle.checked && testingAudio) stopUserAudio();
+});
+testAudioButton.addEventListener('click', () => {
+  if (testingAudio) {
+    stopUserAudio();
+    return;
+  }
+
+  const selection = getAudioSelection();
+  if (selection.type === 'invalid') {
+    showAudioMessage('Enter a valid http(s) audio URL before testing it.', true);
+    return;
+  }
+  if (selection.type === 'unsupported') {
+    showAudioMessage('Unsupported link. Use a YouTube video or a direct audio file URL.', true);
+    return;
+  }
+
+  stopUserAudio();
+  testingAudio = true;
+  testAudioButton.innerHTML = 'STOP TEST AUDIO <span aria-hidden="true">■</span>';
+  showAudioMessage('Testing audio link...');
+  if (selection.type === 'youtube') {
+    createYouTubePlayer(selection.videoId, true);
+    return;
+  }
+  userAudio = new Audio(selection.url);
+  userAudio.addEventListener('error', () => {
+    stopUserAudio();
+    showAudioMessage('This direct audio link could not be loaded. Check the URL or file format.', true);
+  });
+  userAudio.addEventListener('ended', stopUserAudio, { once: true });
+  userAudio.play().catch(() => {
+    stopUserAudio();
+    showAudioMessage('Direct audio playback was blocked by the browser. Try Test Audio again or check site permissions.', true);
+  });
 });
 
 document.querySelectorAll('.orientation-button').forEach((button) => {
@@ -262,6 +451,9 @@ setupForm.addEventListener('submit', (event) => {
     state.breaksEnabled = breakToggle.checked;
     state.breakIntervalMs = Number(breakIntervalInput.value) * 60 * 1000;
     state.breakDurationMs = Number(breakDurationInput.value) * 60 * 1000;
+    state.audioUrl = audioUrlInput.value.trim();
+    state.audioEnabled = audioToggle.checked;
+    saveAudioSettings();
     state.focusElapsedMs = 0;
     state.nextBreakAtMs = state.breakIntervalMs;
     state.milestones = new Set();
@@ -279,6 +471,7 @@ setupForm.addEventListener('submit', (event) => {
     updateDisplay(Date.now());
     clearTimeout(state.timerHandle);
     state.timerHandle = setTimeout(tick, 250);
+    if (prepareUserAudio()) playUserAudio();
 
     void requestWakeLock();
     void requestNotificationPermission();
@@ -314,6 +507,7 @@ pauseButton.addEventListener('click', () => {
     setStatus('FOCUS RESUMED');
     persistSession();
     state.timerHandle = setTimeout(tick, 250);
+    playUserAudio();
     void requestWakeLock();
   } else {
     state.focusElapsedMs += Date.now() - state.focusSegmentStartedAt;
@@ -322,9 +516,74 @@ pauseButton.addEventListener('click', () => {
     setStatus('TIMER PAUSED — YOUR PROGRESS IS SAVED');
     persistSession();
     updateDisplay(Date.now());
+    pauseUserAudio();
     void releaseWakeLock();
   }
 });
+
+stopButton.addEventListener('click', resetSession);
+
+function resetSession() {
+  clearTimeout(state.timerHandle);
+  state.timerHandle = 0;
+  stopUserAudio();
+  notificationSound.pause();
+  notificationSound.currentTime = 0;
+  void releaseWakeLock();
+  localStorage.removeItem(SESSION_STORAGE_KEY);
+
+  Object.assign(state, {
+    goal: '',
+    reward: '',
+    totalFocusMs: 0,
+    breakIntervalMs: 0,
+    breakDurationMs: 0,
+    breaksEnabled: false,
+    audioUrl: '',
+    audioEnabled: false,
+    focusElapsedMs: 0,
+    focusSegmentStartedAt: 0,
+    breakStartedAt: 0,
+    breakElapsedMs: 0,
+    nextBreakAtMs: 0,
+    status: 'focus',
+    orientation: 'horizontal',
+    paused: false,
+    milestones: new Set()
+  });
+
+  goalInput.value = '';
+  durationInput.value = '25';
+  rewardInput.value = '';
+  breakToggle.checked = false;
+  breakIntervalInput.value = '25';
+  breakIntervalInput.disabled = true;
+  breakDurationInput.value = '5';
+  breakDurationInput.disabled = true;
+  pauseButton.innerHTML = 'PAUSE <span aria-hidden="true">Ⅱ</span>';
+  statusStrip.textContent = '';
+  statusStrip.classList.add('hidden');
+  breakModule.classList.add('hidden');
+  focusProgress.style.width = '0%';
+  focusProgress.style.height = '100%';
+  breakProgress.style.width = '0%';
+  breakProgress.style.height = '100%';
+  focusPercent.textContent = '0%';
+  breakPercent.textContent = '0%';
+  timeLeft.textContent = '00:00';
+  breakLeft.textContent = '00:00';
+  progressLayout.classList.remove('vertical');
+  progressLayout.classList.add('horizontal');
+  document.querySelectorAll('.orientation-button').forEach((button) => {
+    button.classList.toggle('active', button.dataset.orientation === 'horizontal');
+  });
+  claimButton.disabled = false;
+  claimButton.innerHTML = 'CLAIM REWARD <span aria-hidden="true">→</span>';
+  claimedMessage.classList.add('hidden');
+  setupScreen.classList.remove('hidden');
+  timerScreen.classList.add('hidden');
+  completeScreen.classList.add('hidden');
+}
 
 claimButton.addEventListener('click', async () => {
   if (claimButton.disabled) return;
@@ -365,6 +624,7 @@ function reconcileSession(now) {
       state.breakElapsedMs = Math.max(0, now - breakStartedAt);
       breakModule.classList.remove('hidden');
       setStatus('BREAK TIME — RESET YOUR CIRCUITS');
+      pauseUserAudio();
       void releaseWakeLock();
       notifyUser('Break time', 'Your focus segment is complete. Take a short break.');
       persistSession();
@@ -379,6 +639,7 @@ function reconcileSession(now) {
       state.nextBreakAtMs += state.breakIntervalMs;
       breakModule.classList.add('hidden');
       setStatus('BREAK COMPLETE — BACK TO WORK');
+      playUserAudio();
       void requestWakeLock();
       notifyUser('Break complete', 'Your next focus segment is ready.');
       persistSession();
@@ -483,6 +744,7 @@ function finishSession() {
   state.status = 'complete';
   state.focusElapsedMs = state.totalFocusMs;
   clearTimeout(state.timerHandle);
+  stopUserAudio();
   void releaseWakeLock();
   completeGoal.textContent = state.goal;
   completeReward.textContent = state.reward;
@@ -549,4 +811,5 @@ function formatTime(milliseconds) {
   return `${minutes}:${seconds}`;
 }
 
+restoreAudioSettings();
 restoreSession();

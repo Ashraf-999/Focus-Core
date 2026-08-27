@@ -59,6 +59,21 @@
             </span>
           </label>
         </div>
+        <div class="audio-config">
+          <label class="field-group" for="audio-url-input">
+            <span class="field-label"><span>04</span> AUDIO LINK</span>
+            <input id="audio-url-input" name="audioUrl" type="text" inputmode="url" placeholder="https://example.com/focus.mp3" autocomplete="url">
+          </label>
+          <div class="audio-controls">
+            <label class="toggle-label" for="audio-toggle">
+              <input id="audio-toggle" type="checkbox">
+              <span class="toggle-box" aria-hidden="true"></span>
+              <span>ENABLE AUDIO LINK</span>
+            </label>
+            <button id="test-audio-button" class="secondary-button" type="button">TEST AUDIO <span aria-hidden="true">▶</span></button>
+          </div>
+          <p id="audio-message" class="audio-message" role="status" aria-live="polite"></p>
+        </div>
         <button class="primary-button" type="submit">START FOCUS <span aria-hidden="true">→</span></button>
       </form>
     </section>
@@ -93,6 +108,7 @@
 
       <div class="timer-actions">
         <button id="pause-button" class="secondary-button" type="button">PAUSE <span aria-hidden="true">Ⅱ</span></button>
+        <button id="stop-button" class="secondary-button" type="button">STOP <span aria-hidden="true">■</span></button>
       </div>
 
       <div class="reward-line"><span>REWARD LOCKED</span><strong id="reward-display"></strong></div>
