@@ -28,15 +28,34 @@ const stopButton = document.querySelector('#stop-button');
 const completeGoal = document.querySelector('#complete-goal');
 const completeReward = document.querySelector('#complete-reward');
 const claimButton = document.querySelector('#claim-button');
+const add5Button = document.querySelector("#add-5-button")
+const add10Button = document.querySelector("#add-10-button")
+const finishButton = document.querySelector("#finish-button")
+const rewardSection = document.querySelector("#reward-section")
 const claimedMessage = document.querySelector('#claimed-message');
 const SESSION_STORAGE_KEY = 'focus-core-session';
 const AUDIO_SETTINGS_KEY = 'focus-core-audio-settings';
+const homeButton = document.querySelector("#home-button");
+// const completionDetails = document.querySelector("#completion-details")
+// const completionIcon = document.querySelector('#completion-icon');
+// const timesUp = document.querySelector('#times-up');
+// const completeTitle = document.querySelector('#complete-title');
+// const completionMessage = document.querySelector('#completion-message');
+// const completionActions = document.querySelector('#completion-actions');
 const notificationSound = new Audio('./Notification%20Sound.wav');
+const timeUpContent = document.querySelector("#time-up-content");
+const goalCompleteContent = document.querySelector("#goal-complete-content");
+const rewardDetails = document.querySelector("#reward-details");
 notificationSound.preload = 'auto';
 notificationSound.volume = 0.65;
+
 const rewardSound = new Audio('./koiroylers-correct-356013.mp3');
 rewardSound.preload = 'auto';
 rewardSound.volume = 0.8;
+
+const buttonSound = new Audio("./ClickSound.wav");
+buttonSound.preload = 'auto';
+volume = 0.5;
 let notificationRegistration;
 let serviceWorkerReady;
 let wakeLock = null;
@@ -46,23 +65,36 @@ let youtubePlayer = null;
 let testingAudio = false;
 
 async function requestWakeLock() {
-  if (!('wakeLock' in navigator) || wakeLock && !wakeLock.released || wakeLockRequest) return;
+  if (!('wakeLock' in navigator)) {
+    console.warn('Screen Wake Lock in not supported.');
+    return;
+  }
 
-  wakeLockRequest = navigator.wakeLock.request('screen')
-    .then((lock) => {
-      wakeLock = lock;
-      lock.addEventListener('release', () => {
-        wakeLock = null;
-        if (isActiveSession() && document.visibilityState === 'visible') void requestWakeLock();
-      });
-    })
-    .catch((error) => {
-      console.error('Wake Lock request failed:', error);
-    })
-    .finally(() => {
-      wakeLockRequest = null;
+  if (wakeLock && !wakeLock.released)  {
+    return;
+  }
+
+  if (wakeLockRequest) {
+    return;
+  }
+
+  try {
+    wakeLockRequest = navigator.wakeLock.request('screen');
+
+    wakeLock = await wakeLockRequest;
+
+    wakeLock.addEventListener('release', () => {
+      console.log('Wake Lock released.');
+      wakeLock = null;
     });
-  await wakeLockRequest;
+
+    console.log("Screen Wake Lock active.");
+  } catch (error) {
+    console.error('Wake Lock request failed:', error);
+  } finally {
+    wakeLockRequest = null;
+  }
+
 }
 
 function isActiveSession() {
@@ -455,7 +487,7 @@ setupForm.addEventListener('submit', (event) => {
 
     state.goal = goalInput.value.trim();
     state.reward = rewardInput.value.trim();
-    state.totalFocusMs = Number(durationInput.value) * 60 * 1000;
+    state.totalFocusMs = Number(durationInput.value)  * 60 * 1000;
     state.breaksEnabled = breakToggle.checked;
     state.breakIntervalMs = Number(breakIntervalInput.value) * 60 * 1000;
     state.breakDurationMs = Number(breakDurationInput.value) * 60 * 1000;
@@ -538,6 +570,14 @@ function resetSession() {
   notificationSound.currentTime = 0;
   void releaseWakeLock();
   localStorage.removeItem(SESSION_STORAGE_KEY);
+  homeButton.classList.add('hidden');
+  timeUpContent.classList.remove('hidden');
+  goalCompleteContent.classList.add('hidden');
+  rewardDetails.classList.add('hidden');
+  claimButton.classList.remove('hidden');
+  claimedMessage.classList.add('hidden');
+  homeButton.classList.add('hidden')
+  claimButton.disabled = false;
 
   Object.assign(state, {
     goal: '',
@@ -587,25 +627,95 @@ function resetSession() {
   claimButton.disabled = false;
   claimButton.innerHTML = 'CLAIM REWARD <span aria-hidden="true">→</span>';
   claimedMessage.classList.add('hidden');
+  
+  add5Button.disabled = false;
+  add10Button.disabled = false;
+  finishButton.disabled = false;
+  rewardSection.classList.add('hidden');
   setupScreen.classList.remove('hidden');
   timerScreen.classList.add('hidden');
   completeScreen.classList.add('hidden');
 }
 
+function addExtraTime(minutes) {
+  const now = Date.now();
+  const extraMs = minutes * 60 * 1000;
+
+  state.totalFocusMs += extraMs;
+  
+  state.focusElapsedMs = state.totalFocusMs - extraMs;
+  state.focusSegmentStartedAt = now;
+
+  state.status = 'focus';
+  state.paused = false;
+  
+  completeScreen.classList.add('hidden');
+  timerScreen.classList.remove('hidden');
+
+  clearTimeout(state.timerHandle);
+  updateDisplay(now);
+  persistSession();
+
+  void requestWakeLock();
+  playUserAudio();
+
+  state.timerHandle = setTimeout(tick, 250);
+}
+
+add5Button.addEventListener('click', () => {
+  addExtraTime(5);
+});
+
+add10Button.addEventListener('click', () => {
+  addExtraTime(10);
+});
+
+finishButton.addEventListener('click', () => {
+
+  timeUpContent.classList.add('hidden');
+
+  goalCompleteContent.classList.remove('hidden');
+
+  completeGoal.textContent = state.goal;
+
+  rewardDetails.classList.add('hidden');
+
+  claimButton.classList.remove('hidden');
+
+  claimedMessage.classList.add('hidden');
+  homeButton.classList.add('hidden');
+
+});
+
 claimButton.addEventListener('click', async () => {
+
   if (claimButton.disabled) return;
 
   claimButton.disabled = true;
-  claimButton.textContent = 'REWARD CLAIMED';
+
+  claimButton.classList.add('hidden');
+
+  rewardDetails.classList.remove('hidden');
+
+  completeReward.textContent = state.reward;
+
   claimedMessage.classList.remove('hidden');
 
+  homeButton.classList.remove('hidden');
+
   try {
+
     rewardSound.pause();
     rewardSound.currentTime = 0;
+
     await rewardSound.play();
+
   } catch (error) {
+
     console.error('Reward sound could not play:', error);
+
   }
+
 });
 
 function getFocusElapsed(now) {
@@ -630,11 +740,11 @@ function reconcileSession(now) {
       state.breakStartedAt = breakStartedAt;
       state.breakElapsedMs = Math.max(0, now - breakStartedAt);
       breakModule.classList.remove('hidden');
-      setStatus('BREAK TIME — RESET YOUR CIRCUITS');
+      setStatus('BREAK TIME — RELAX WITHOUT PHONE');
       pauseUserAudio();
       playNotificationSound();
       void requestWakeLock();
-      notifyUser('Break time', 'Your focus segment is complete. Take a short break.');
+      notifyUser('Break time', 'Take a short break (Tip: don\'t use phone, just relax and do nothing).');
       persistSession();
     }
 
@@ -650,7 +760,7 @@ function reconcileSession(now) {
       playUserAudio();
       playNotificationSound();
       void requestWakeLock();
-      notifyUser('Break complete', 'Your next focus segment is ready.');
+      notifyUser('Break complete', 'Get back to work.');
       persistSession();
     }
   }
@@ -736,10 +846,10 @@ function triggerMilestone(percentage) {
     if (percentage >= milestone && !state.milestones.has(milestone)) {
       state.milestones.add(milestone);
       const message = {
-        25: '25% complete — Keep going!',
-        50: "50% complete — You're halfway there!",
-        75: '75% complete — Final stretch!',
-        100: '100% complete — You did it!'
+        25: '25% complete — TOO SOON TO GIVE UP!',
+        50: "50% complete — YOU ARE HALFWAY THERE! KEEP GOING!",
+        75: '75% complete — ALMOST THERE!',
+        100: '100% complete — YOU DID IT!'
       }[milestone];
       setStatus(message.toUpperCase());
       notifyUser('Focus Timer', message, `focus-core-milestone-${milestone}`);
@@ -752,13 +862,44 @@ function triggerMilestone(percentage) {
 function finishSession() {
   state.status = 'complete';
   state.focusElapsedMs = state.totalFocusMs;
+
   clearTimeout(state.timerHandle);
+  state.timerHandle = 0;
+
   stopUserAudio();
   void releaseWakeLock();
+
+  // Reset the completion screen for a completely new session
+
+  // Show TIME'S UP screen first
+  timeUpContent.classList.remove('hidden');
+
+  // Hide GOAL COMPLETE screen until FINISH is clicked
+  goalCompleteContent.classList.add('hidden');
+
+  // Reset reward section
+  rewardSection.classList.remove('hidden');
+
+  // Hide reward details until CLAIM REWARD is clicked
+  rewardDetails.classList.add('hidden');
+
+  // Reset Claim Reward button
+  claimButton.classList.remove('hidden');
+  claimButton.disabled = false;
+  claimButton.innerHTML =
+    'CLAIM REWARD <span aria-hidden="true">→</span>';
+
+  // Hide previous session's claimed message and home button
+  claimedMessage.classList.add('hidden');
+  homeButton.classList.add('hidden');
+
+  // Update goal and reward
   completeGoal.textContent = state.goal;
   completeReward.textContent = state.reward;
-  persistSession();
+
+  // Show completion screen
   timerScreen.classList.add('hidden');
+  setupScreen.classList.add('hidden');
   completeScreen.classList.remove('hidden');
 }
 
@@ -819,6 +960,17 @@ function formatTime(milliseconds) {
   const seconds = (totalSeconds % 60).toString().padStart(2, '0');
   return `${minutes}:${seconds}`;
 }
+
+document.querySelectorAll('button').forEach((button) => {
+  button.addEventListener('click', () => {
+    buttonSound.currentTime = 0;
+    buttonSound.play().catch(() => {})
+  });
+});
+
+homeButton.addEventListener('click', () => {
+  resetSession();
+});
 
 restoreAudioSettings();
 restoreSession();

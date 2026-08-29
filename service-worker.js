@@ -37,6 +37,3 @@ self.addEventListener('notificationclick', (event) => {
     await self.clients.openWindow(APP_URL);
   })());
 });
-
-// A service worker cannot run after the browser is fully terminated. Persistent
-// delivery in that case requires a push subscription and a server-side Web Push service.

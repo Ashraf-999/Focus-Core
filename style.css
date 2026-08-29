@@ -13,7 +13,6 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; background: var(--bg); color: var(--green-bright); font-family: "Courier New", Courier, monospace; }
-body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .055; background: repeating-linear-gradient(0deg, transparent 0 3px, var(--green) 4px, transparent 5px); mix-blend-mode: screen; }
 button, input { font: inherit; }
 button { cursor: pointer; }
 .app-shell { width: min(1080px, calc(100% - 40px)); min-height: 100vh; margin: auto; display: flex; flex-direction: column; }
