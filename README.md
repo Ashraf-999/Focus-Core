@@ -4,11 +4,6 @@ It is a productivity timer app with a option to set goals, audio and rewards, an
 
 <img width="1476" height="815" alt="Screenshot 2026-08-19 142924" src="https://github.com/user-attachments/assets/e6a424a4-d9d8-455a-bb1b-5bcf525b547c" />
 
-
-<<<<<<< HEAD
-Then open `http://localhost:8000` and allow notifications when starting a session. For production, serve the site over HTTPS.
-
-=======
 You can try out my website from here <a href="https://ashraf-999.github.io/Focus-Core/" target="blank">Try it</a>
 
 ## Features:
@@ -16,4 +11,6 @@ You can try out my website from here <a href="https://ashraf-999.github.io/Focus
 2. Setting goals and rewards.
 3. setting break time and audio system.
 4. A progress bar.
->>>>>>> add6e5683e2e76742c38663452b5bd5e68488987
+
+### Recomendation
+Use the site in mobile or side of your computer screen for better result.
