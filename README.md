@@ -13,4 +13,8 @@ You can try out my website from here <a href="https://ashraf-999.github.io/Focus
 4. A progress bar.
 
 ### Recomendation
+<<<<<<< HEAD
 Use the site in mobile or side of your computer screen for better result.
+=======
+Use the site in mobile or side of your computer screen for better result.
+>>>>>>> c3fed219fe2c9582a6f23a59495944e8e5e2ba58
